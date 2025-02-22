@@ -7,7 +7,9 @@ class FormValidation {
       return 'Please enter an email';
     }
     String pattern =
-        r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'; // Regular expression for email
+       r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9-]+(?:\.[a-zA-Z0-9-]+)*\.[a-zA-Z]{2,}$';
+
+
     RegExp regExp = RegExp(pattern);
     if (!regExp.hasMatch(email)) {
       return 'Please enter a valid email address';
