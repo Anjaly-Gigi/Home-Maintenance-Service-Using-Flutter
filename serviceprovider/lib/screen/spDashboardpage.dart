@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
-class spdashboard extends StatelessWidget {
-  const spdashboard.spdashboard({super.key});
+class DashBoard extends StatelessWidget {
+  const DashBoard.spdashboard({super.key});
 
   @override
   Widget build(BuildContext context) {

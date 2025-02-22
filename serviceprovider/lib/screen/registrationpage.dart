@@ -16,7 +16,6 @@ class Myregister extends StatefulWidget {
 
 class _MyregisterState extends State<Myregister> {
   final _formKey = GlobalKey<FormState>();
-
   final TextEditingController _nameController = TextEditingController();
   final TextEditingController _addressController = TextEditingController();
   final TextEditingController _emailController = TextEditingController();
@@ -24,13 +23,14 @@ class _MyregisterState extends State<Myregister> {
   final TextEditingController _confirmPasswordController =
       TextEditingController();
   final TextEditingController _phoneController = TextEditingController();
-  final TextEditingController placeController = TextEditingController();
 
   String? selectedDistrict;
+  String? selectedPlace;
+  File? _image; // Profile image
+  File? _proofFile; // Proof file
   List<Map<String, dynamic>> districtList = [];
   List<Map<String, dynamic>> placeList = [];
-  File? _image;
-  String? selectedPlace;
+  String? proofFileName;
 
   @override
   void initState() {
@@ -41,271 +41,98 @@ class _MyregisterState extends State<Myregister> {
   Future<void> fetchDistricts() async {
     try {
       final response = await supabase.from('tbl_district').select();
-      print("Fetched districts: $response");
-      setState(() {
-        districtList = List<Map<String, dynamic>>.from(response);
-      });
+      setState(() => districtList = List<Map<String, dynamic>>.from(response));
     } catch (e) {
-      print("Error: $e");
+      print("Error fetching districts: $e");
     }
   }
 
-  Future<void> fetchPlaces(String districtid) async {
+  Future<void> fetchPlaces(String districtId) async {
     try {
       final response = await supabase
           .from('tbl_place')
           .select()
-          .eq('district_id', districtid);
-      print("Fetched places: $response");
-      setState(() {
-        placeList = List<Map<String, dynamic>>.from(response);
-      });
+          .eq('district_id', districtId);
+      setState(() => placeList = List<Map<String, dynamic>>.from(response));
     } catch (e) {
-      print("Error: $e");
-      setState(() {});
+      print("Error fetching places: $e");
     }
   }
 
   Future<void> _pickImage() async {
     final pickedFile =
         await ImagePicker().pickImage(source: ImageSource.gallery);
+    if (pickedFile != null) setState(() => _image = File(pickedFile.path));
+  }
+
+  Future<void> _pickProofFile() async {
+    final pickedFile = await ImagePicker().pickImage(
+        source: ImageSource.gallery); // For images; use file picker for PDFs
     if (pickedFile != null) {
       setState(() {
-        _image = File(pickedFile.path);
+        _proofFile = File(pickedFile.path);
+        proofFileName = pickedFile.name;
       });
     }
   }
 
   Future<void> signup() async {
     try {
-      final AuthResponse response = await supabase.auth.signUp(
+      final response = await supabase.auth.signUp(
         email: _emailController.text,
         password: _passwordController.text,
       );
 
-      final User? user = response.user;
+      final user = response.user;
+      if (user != null) {
+        final userId = user.id;
+        if (_image != null || _proofFile != null) {
+          final photoUrl = _image != null
+              ? await _uploadFile(_image!, userId, 'sp_images')
+              : null;
+          final proofUrl = _proofFile != null
+              ? await _uploadFile(_proofFile!, userId, 'sp_proofs')
+              : null;
 
-      if (user == null) {
-        print('Sign up error: $user');
-      } else {
-        final String userId = user.id;
+          await supabase.from('tbl_sp').insert({
+            'id': userId,
+            'sp_name': _nameController.text,
+            'sp_email': _emailController.text,
+            'sp_photo': photoUrl,
+            'sp_password': _passwordController.text,
+            'sp_address': _addressController.text,
+            'sp_contact': _phoneController.text,
+            'sp_proof': proofUrl,
+            'place_id': selectedPlace,
+          });
 
-        // Step 2: Upload profile photo (if selected)
-        String? photoUrl;
-        if (_image != null) {
-          photoUrl = await _uploadImage(_image!, userId);
+          ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('Account created successfully')));
+          Navigator.push(context,
+              MaterialPageRoute(builder: (context) => const AddSkills()));
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+              content: Text('Please upload profile image and proof document')));
         }
-
-        // Step 3: Insert user details into `tbl_user`
-        await supabase.from('tbl_sp').insert({
-          'id': userId,
-          'sp_name': _nameController.text,
-          'sp_email': _emailController.text,
-          'sp_photo': photoUrl,
-          'sp_password': _passwordController.text,
-          'sp_address': _addressController.text,
-          'place_id': selectedPlace,
-        });
-        print('User created successfully');
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Account Created successfully')),
-        );
       }
     } catch (e) {
       print('Sign up failed: $e');
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text('Sign up failed')));
     }
   }
 
-  Future<String?> _uploadImage(File image, String userId) async {
+  Future<String?> _uploadFile(File file, String userId, String folder) async {
     try {
-      final fileName = 'sp_$userId';
-
-      await supabase.storage.from('sp_images').upload(fileName, image);
-
-      // Get public URL of the uploaded image
-      final imageUrl =
-          supabase.storage.from('sp_images').getPublicUrl(fileName);
+      final fileName =
+          '${folder}_$userId${DateTime.now().millisecondsSinceEpoch}';
+      await supabase.storage.from(folder).upload(fileName, file);
+      final imageUrl = supabase.storage.from(folder).getPublicUrl(fileName);
       return imageUrl;
     } catch (e) {
-      print('Image upload failed: $e');
+      print('File upload failed: $e');
       return null;
     }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: const Color.fromARGB(255, 188, 143, 143),
-      appBar: AppBar(
-        title: const Text("Create Account",
-            style: TextStyle(
-                fontWeight: FontWeight.bold,
-                color: Color.fromARGB(255, 255, 255, 255))),
-        backgroundColor: const Color.fromARGB(255, 0, 128, 128),
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back,
-              color: Color.fromARGB(255, 188, 143, 143)),
-          onPressed: () {
-            Navigator.pop(context);
-          },
-        ),
-      ),
-      body: SingleChildScrollView(
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-          child: Card(
-            shape:
-                RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
-            elevation: 5,
-            child: Padding(
-              padding: const EdgeInsets.all(20.0),
-              child: Form(
-                key: _formKey,
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    const Text(
-                      "Service Provider Information",
-                      style: TextStyle(
-                          fontSize: 22,
-                          fontWeight: FontWeight.bold,
-                          color: Color.fromARGB(255, 0, 128, 128)),
-                      textAlign: TextAlign.center,
-                    ),
-                    const SizedBox(height: 20),
-
-                    // Profile Image Picker with spacing
-                    Center(
-                      child: GestureDetector(
-                        onTap: _pickImage,
-                        child: CircleAvatar(
-                          radius: 50,
-                          backgroundColor: Colors.grey[200],
-                          backgroundImage:
-                              _image != null ? FileImage(_image!) : null,
-                          child: _image == null
-                              ? Icon(Icons.camera_alt,
-                                  size: 50, color: Colors.grey[800])
-                              : null,
-                        ),
-                      ),
-                    ),
-
-                    const SizedBox(
-                        height: 30), // Added space between image and fields
-
-                    _buildTextField(_nameController, 'Name', Icons.person,
-                        FormValidation.validateName),
-                    _buildTextField(_addressController, 'Address', Icons.home,
-                        FormValidation.validateAddress),
-                    _buildTextField(_emailController, 'Email', Icons.email,
-                        FormValidation.validateEmail),
-                    _buildTextField(_phoneController, 'Phone Number',
-                        Icons.phone, FormValidation.validateContact),
-
-                    const SizedBox(height: 10),
-
-                    DropdownButtonFormField(
-                      value: districtList.any(
-                              (district) => district['id'] == selectedDistrict)
-                          ? selectedDistrict
-                          : null,
-                      items: districtList.map((district) {
-                        return DropdownMenuItem(
-                          child: Text(district['district_name']),
-                          value: district['id'],
-                        );
-                      }).toList(),
-                      onChanged: (value) {
-                        setState(() {
-                          selectedDistrict = value.toString();
-                          fetchPlaces(selectedDistrict!);
-                        });
-                      },
-                      decoration: InputDecoration(
-                        labelText: 'Select District',
-                        border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(10)),
-                      ),
-                    ),
-
-                    const SizedBox(height: 10),
-
-                    Row(
-                      children: [
-                        Expanded(
-                          child: DropdownButtonFormField(
-                            value: placeList.any(
-                                    (place) => place['id'] == selectedPlace)
-                                ? selectedPlace
-                                : null,
-                            items: placeList.map((place) {
-                              return DropdownMenuItem(
-                                child: Text(place['place_name']),
-                                value: place['id'],
-                              );
-                            }).toList(),
-                            onChanged: (value) {
-                              setState(() {
-                                selectedPlace = value.toString();
-                              });
-                            },
-                            decoration: InputDecoration(
-                              labelText: 'Select Place',
-                              border: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(10)),
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-
-                    const SizedBox(height: 10),
-
-                    _buildTextField(_passwordController, 'Password', Icons.lock,
-                        FormValidation.validatePassword,
-                        obscureText: true),
-                    _buildTextField(
-                        _confirmPasswordController,
-                        'Confirm Password',
-                        Icons.lock_outline,
-                        (value) => FormValidation.validateConfirmPassword(
-                            value, _passwordController.text),
-                        obscureText: true),
-
-                    const Divider(),
-                    const SizedBox(height: 20),
-
-                    ElevatedButton(
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: const Color.fromARGB(255, 0, 128, 128),
-                        padding: const EdgeInsets.symmetric(vertical: 14),
-                        shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(10)),
-                      ),
-                      onPressed: () {
-                        // if (_formKey.currentState!.validate()) {
-                          print("Registration Successful");
-                          signup();
-                        // }
-                      },
-                      child: const Text(
-                        'Register',
-                        style: TextStyle(
-                          fontSize: 20,
-                          fontWeight: FontWeight.bold,
-                          color: Color.fromARGB(230, 255, 252, 197),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
   }
 
   Widget _buildTextField(TextEditingController controller, String label,
@@ -315,6 +142,8 @@ class _MyregisterState extends State<Myregister> {
       padding: const EdgeInsets.only(bottom: 16),
       child: TextFormField(
         controller: controller,
+        obscureText: obscureText,
+        validator: validator,
         decoration: InputDecoration(
           labelText: label,
           prefixIcon: Icon(icon, color: const Color.fromARGB(255, 0, 128, 128)),
@@ -322,8 +151,188 @@ class _MyregisterState extends State<Myregister> {
           filled: true,
           fillColor: Colors.white,
         ),
-        obscureText: obscureText,
-        validator: validator,
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: const Color.fromARGB(255, 188, 143, 143),
+      appBar: AppBar(
+        title: const Text("Create Account",
+            style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white)),
+        backgroundColor: const Color.fromARGB(255, 0, 128, 128),
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back,
+              color: Color.fromARGB(255, 188, 143, 143)),
+          onPressed: () => Navigator.pop(context),
+        ),
+      ),
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+        child: Card(
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+          elevation: 5,
+          child: Padding(
+            padding: const EdgeInsets.all(20.0),
+            child: Form(
+              key: _formKey,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  const Text("Service Provider Information",
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                          fontSize: 22,
+                          fontWeight: FontWeight.bold,
+                          color: Color.fromARGB(255, 0, 128, 128))),
+                  const SizedBox(height: 20),
+
+                  // Profile Image Picker
+                  Center(
+                    child: GestureDetector(
+                      onTap: _pickImage,
+                      child: CircleAvatar(
+                        radius: 50,
+                        backgroundColor: Colors.grey[200],
+                        backgroundImage:
+                            _image != null ? FileImage(_image!) : null,
+                        child: _image == null
+                            ? Icon(Icons.camera_alt,
+                                size: 50, color: Colors.grey[800])
+                            : null,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 30),
+
+                  _buildTextField(_nameController, 'Name', Icons.person,
+                      FormValidation.validateName),
+                  _buildTextField(_addressController, 'Address', Icons.home,
+                      FormValidation.validateAddress),
+                  _buildTextField(_emailController, 'Email', Icons.email,
+                      FormValidation.validateEmail),
+                  _buildTextField(_phoneController, 'Phone Number', Icons.phone,
+                      FormValidation.validateContact),
+
+                  const SizedBox(height: 16),
+
+                  // Proof Upload Field
+                  GestureDetector(
+                    onTap: _pickProofFile,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                          vertical: 12, horizontal: 10),
+                      decoration: BoxDecoration(
+                        border: Border.all(color: Colors.grey),
+                        borderRadius: BorderRadius.circular(10),
+                        color: Colors.white,
+                      ),
+                      child: Row(
+                        children: [
+                          const Icon(Icons.insert_drive_file,
+                              color: Color.fromARGB(255, 0, 128, 128)),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: Text(
+                              proofFileName ?? 'Upload Proof Document',
+                              style: TextStyle(
+                                  color: proofFileName != null
+                                      ? Colors.black
+                                      : Colors.grey),
+                            ),
+                          ),
+                          const Icon(Icons.upload_file, color: Colors.grey),
+                        ],
+                      ),
+                    ),
+                  ),
+
+                  const SizedBox(height: 16),
+
+                  DropdownButtonFormField<String>(
+                    value: districtList
+                            .any((d) => d['id'].toString() == selectedDistrict)
+                        ? selectedDistrict
+                        : null,
+                    items: districtList.map((district) {
+                      return DropdownMenuItem<String>(
+                        value: district['id'].toString(),
+                        child: Text(district['district_name']),
+                      );
+                    }).toList(),
+                    onChanged: (value) {
+                      setState(() {
+                        selectedDistrict = value;
+                        selectedPlace =
+                            null; // Reset place when district changes
+                        fetchPlaces(value!);
+                      });
+                    },
+                    decoration: InputDecoration(
+                      labelText: 'Select District',
+                      border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(10)),
+                    ),
+                  ),
+
+                  const SizedBox(height: 10),
+
+                  DropdownButtonFormField<String>(
+                    value: placeList
+                            .any((p) => p['id'].toString() == selectedPlace)
+                        ? selectedPlace
+                        : null,
+                    items: placeList.map((place) {
+                      return DropdownMenuItem<String>(
+                        value: place['id'].toString(),
+                        child: Text(place['place_name']),
+                      );
+                    }).toList(),
+                    onChanged: (value) => setState(() => selectedPlace = value),
+                    decoration: InputDecoration(
+                      labelText: 'Select Place',
+                      border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(10)),
+                    ),
+                  ),
+
+                  const SizedBox(height: 10),
+                  _buildTextField(_passwordController, 'Password', Icons.lock,
+                      FormValidation.validatePassword,
+                      obscureText: true),
+                  _buildTextField(
+                      _confirmPasswordController,
+                      'Confirm Password',
+                      Icons.lock_outline,
+                      (value) => FormValidation.validateConfirmPassword(
+                          value, _passwordController.text),
+                      obscureText: true),
+
+                  const SizedBox(height: 20),
+                  ElevatedButton(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color.fromARGB(255, 0, 128, 128),
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(10)),
+                    ),
+                    onPressed: () {
+                      if (_formKey.currentState!.validate()) signup();
+                    },
+                    child: const Text('Register',
+                        style: TextStyle(
+                            fontSize: 20,
+                            fontWeight: FontWeight.bold,
+                            color: Color.fromARGB(230, 255, 252, 197))),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
       ),
     );
   }
