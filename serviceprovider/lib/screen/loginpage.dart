@@ -22,9 +22,10 @@ class _LoginScreenState extends State<Mylogin> {
 
   void _submit() {
     if (formKey.currentState!.validate()) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Validation Successful')),
-      );
+      // ScaffoldMessenger.of(context).showSnackBar(
+      //   SnackBar(content: Text('Validation Successful')),
+      print("Validation successful");
+    
     }
   }
 
@@ -33,7 +34,7 @@ class _LoginScreenState extends State<Mylogin> {
       final authentication = await supabase.auth
           .signInWithPassword(email: email.text, password: password.text);
       if (authentication != null) {
-       Navigator.push(context, MaterialPageRoute(builder: (context) => DashBoard.spdashboard(),));
+       Navigator.push(context, MaterialPageRoute(builder: (context) => DashBoard()));
       }
     } catch (e) {
       print(e);
@@ -59,7 +60,7 @@ class _LoginScreenState extends State<Mylogin> {
                 ),
                 Text(
                   'Welcome back',
-                  style: GoogleFonts.openSans(
+                   style: GoogleFonts.openSans(
                       fontSize: 40,
                       color: const Color.fromARGB(255, 0, 128, 128),
                       textStyle: TextStyle(
@@ -184,7 +185,7 @@ class _LoginScreenState extends State<Mylogin> {
                                     context,
                                     MaterialPageRoute(
                                       builder: (context) => Myregister(),
-                                    ),
+                                    ),   
                                   );
                                 })
                         ]),

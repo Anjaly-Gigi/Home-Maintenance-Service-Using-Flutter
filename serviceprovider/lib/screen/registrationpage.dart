@@ -280,7 +280,7 @@ class _MyregisterState extends State<Myregister> {
 
                   const SizedBox(height: 10),
 
-                  DropdownButtonFormField<String>(
+                    DropdownButtonFormField<String>(
                     value: placeList
                             .any((p) => p['id'].toString() == selectedPlace)
                         ? selectedPlace
